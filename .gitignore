@@ -19,3 +19,8 @@ __pycache__/
 
 # OS files
 .DS_Store
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3

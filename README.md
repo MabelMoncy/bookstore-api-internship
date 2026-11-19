@@ -1,17 +1,17 @@
-# BookStore REST API
+# BookStore Microservice API
 
-A lightweight, high-performance asynchronous REST API for managing a bookstore inventory, built with **FastAPI** and **Pydantic**. Data is stored in-memory using a Python dictionary without requiring an external database.
+A production-ready asynchronous microservice for bookstore inventory and order processing, built with **FastAPI**, **Pydantic**, and **SQLAlchemy 2.0 ORM** with **SQLite** (`aiosqlite`). Containerized with a **multi-stage Dockerfile** and featuring **asynchronous BackgroundTasks**, **SlowAPI Rate Limiting**, **JWT Authentication**, **Role-Based Access Control (RBAC)**, and **Relational Joins**.
 
 ---
 
 ## Features
 
-- **Asynchronous CRUD Endpoints**: Create, read, update, and delete books asynchronously.
-- **In-Memory Storage**: Fast in-memory Python dictionary data store.
-- **Pydantic Validation**: Strict data type and business logic validation (positive prices, non-negative stock, non-empty required fields).
-- **Flexible Query Filtering**: Filter books by `title`, `author`, `genre`, and price range (`min_price`, `max_price`).
-- **Standard HTTP Status Codes & Error Handling**: Proper status codes (`200`, `201`, `400`, `404`, `422`) with descriptive JSON error messages.
-- **Interactive API Documentation**: Auto-generated interactive Swagger UI and OpenAPI JSON specifications.
+- **Asynchronous Background Processing**: Utilizes `FastAPI.BackgroundTasks` to send asynchronous email notifications and dispatch webhooks out-of-band without blocking HTTP request/response lifecycles.
+- **Rate Limiting**: Protects sensitive endpoints (e.g. login and notification dispatchers) against brute-force and spam using **SlowAPI** (`429 Too Many Requests`).
+- **Production Multi-Stage Docker Container**: Hardened, multi-stage `Dockerfile` creating a lightweight, non-root runner container with integrated health checks.
+- **Relational ORM Persistence**: Powered by **SQLAlchemy 2.0** and **aiosqlite** with persistent relational models (`User`, `Book`, `Note`) and foreign-key joins.
+- **User Authentication & RBAC**: JWT access tokens, bcrypt password hashing, role enforcement (`user` vs `admin`).
+- **Interactive OpenAPI Documentation**: Swagger UI at `/docs` with JWT Bearer **Authorize** support.
 
 ---
 
@@ -21,268 +21,164 @@ A lightweight, high-performance asynchronous REST API for managing a bookstore i
 bookstore-api/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py
-│   └── schemas.py
-├── requirements.txt
-└── README.md
+│   ├── auth.py          # Authentication, JWT handling, and RBAC dependencies
+│   ├── database.py      # Async SQLite engine, sessionmaker, and Base
+│   ├── limiter.py       # Global SlowAPI rate limiter configuration
+│   ├── main.py          # FastAPI application, route handlers, and lifespan
+│   ├── models.py        # SQLAlchemy declarative ORM models (User, Book, Note)
+│   ├── schemas.py       # Pydantic validation models and response DTOs
+│   └── tasks.py         # Asynchronous background tasks (emails & webhooks)
+├── Dockerfile           # Multi-stage production container build
+├── .dockerignore        # Docker build exclusion list
+├── docker-compose.yml   # Docker compose configuration
+├── requirements.txt     # Python project dependencies
+└── README.md            # Microservice documentation
 ```
 
-- **`app/schemas.py`**: Pydantic models (`BookBase`, `BookCreate`, `BookUpdate`, `Book`) defining book schemas, data types, and field validation rules.
-- **`app/main.py`**: FastAPI application instance, in-memory dictionary storage, and asynchronous route handlers.
-- **`requirements.txt`**: Project dependencies.
-- **`README.md`**: Project documentation, setup, execution instructions, and API examples.
+---
+
+## Configuration
+
+The service is fully configurable via environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_URL` | `sqlite+aiosqlite:///./bookstore.db` | SQLAlchemy async SQLite connection string |
+| `JWT_SECRET_KEY` | `09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7` | Secret key used to sign JWT tokens |
+| `JWT_ALGORITHM` | `HS256` | JWT signing algorithm |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Access token lifespan in minutes |
 
 ---
 
-## Data Schema & Validation Rules
+## Running with Docker
 
-Each book record contains the following attributes:
+### 1. Build the Docker Image
 
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| `id` | `integer` | Positive (`> 0`), auto-generated or specified on create | Unique identifier for the book |
-| `title` | `string` | Required, non-empty, non-whitespace | Title of the book |
-| `author` | `string` | Required, non-empty, non-whitespace | Author of the book |
-| `price` | `float` | Required, strictly positive (`> 0.0`) | Price of the book |
-| `genre` | `string` | Required, non-empty, non-whitespace | Genre / category of the book |
-| `stock` | `integer` | Required, non-negative (`>= 0`) | Available quantity in inventory |
+The multi-stage `Dockerfile` compiles binary wheels in a builder stage and copies only production artifacts into a secure non-root runner image:
 
----
-
-## Installation & Setup
-
-### Prerequisites
-
-- Python 3.10+ installed
-- `pip` package manager
-
-### 1. Set Up Virtual Environment
-
-If using an existing virtual environment:
 ```bash
+docker build -t bookstore-api:latest .
+```
+
+### 2. Run the Container
+
+```bash
+docker run -d -p 8000:8000 --name bookstore-api bookstore-api:latest
+```
+
+### 3. Or Run with Docker Compose
+
+```bash
+docker compose up --build -d
+```
+
+Check logs and health status:
+```bash
+docker ps
+docker logs -f bookstore-api
+```
+
+---
+
+## Local Development Execution
+
+```bash
+# 1. Activate virtual environment
 source venv/bin/activate
-```
 
-Or to create and activate a new virtual environment:
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-### 2. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## Execution Instructions
-
-Start the development server using **Uvicorn**:
-
-```bash
+# 2. Start Uvicorn
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Alternative execution using Python module syntax:
-```bash
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Once running:
-- **API Base URL**: `http://127.0.0.1:8000`
+- **Base URL**: `http://127.0.0.1:8000`
 - **Interactive Swagger UI**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-- **ReDoc UI**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
-- **OpenAPI Schema (JSON)**: [http://127.0.0.1:8000/openapi.json](http://127.0.0.1:8000/openapi.json)
+- **OpenAPI Schema**: [http://127.0.0.1:8000/openapi.json](http://127.0.0.1:8000/openapi.json)
 
 ---
 
-## API Endpoints
+## API Endpoints Reference
 
-| Method | Endpoint | Description | Status Code |
-|---|---|---|---|
-| `GET` | `/` | API welcome message and documentation links | `200 OK` |
-| `POST` | `/books` | Create a new book | `201 Created` |
-| `GET` | `/books` | Retrieve all books (with optional query filters) | `200 OK` |
-| `GET` | `/books/{book_id}` | Retrieve a specific book by ID | `200 OK` / `404 Not Found` |
-| `PUT` | `/books/{book_id}` | Update an existing book by ID | `200 OK` / `404 Not Found` |
-| `DELETE` | `/books/{book_id}` | Delete a book by ID | `200 OK` / `404 Not Found` |
+### Orders & Background Tasks (Task 4)
 
----
+| Method | Endpoint | Access Level | Description | Status Code |
+|---|---|---|---|---|
+| `POST` | `/books/{book_id}/order` | **Authenticated User** | Order a book, decrement stock, and queue background confirmation email/webhook | `200 OK` / `400 Bad Request` |
+| `POST` | `/notifications/email` | **Authenticated User** | Queue an async email notification in background (Rate limited) | `202 Accepted` |
+| `POST` | `/notifications/webhook` | **Authenticated User** | Queue an async webhook dispatch in background (Rate limited) | `202 Accepted` |
+| `GET` | `/notifications/tasks` | **Authenticated User** | Retrieve the audit log of executed background tasks | `200 OK` |
 
-## Example Requests & Responses
+### Authentication & Users
 
-### 1. Create a Book (`POST /books`)
+| Method | Endpoint | Access Level | Description | Status Code |
+|---|---|---|---|---|
+| `POST` | `/auth/register` | **Public** | Register user or admin in SQLite | `201 Created` / `400 Bad Request` |
+| `POST` | `/auth/login` | **Public** | Authenticate & get JWT Bearer token (Rate limited) | `200 OK` / `401 Unauthorized` |
+| `GET` | `/auth/me` | **Authenticated User** | View user profile with associated books & notes | `200 OK` / `401 Unauthorized` |
+| `GET` | `/auth/users` | **Admin Only** | List all registered users | `200 OK` / `403 Forbidden` |
 
-**Request:**
-`POST /books`
-```json
-{
-  "title": "Clean Code",
-  "author": "Robert C. Martin",
-  "price": 29.99,
-  "genre": "Software Engineering",
-  "stock": 15
-}
-```
+### Books Catalog (Persistent)
 
-*Note: `id` is optional. If provided, the system uses it (validating uniqueness); otherwise, an incrementing ID is auto-assigned.*
+| Method | Endpoint | Access Level | Description | Status Code |
+|---|---|---|---|---|
+| `GET` | `/` | **Public** | Microservice health check & welcome message | `200 OK` |
+| `POST` | `/books` | **Authenticated User** | Add a new book (linked to user) | `201 Created` |
+| `GET` | `/books` | **Authenticated User** | Retrieve all books (supports query filters) | `200 OK` |
+| `GET` | `/books/{book_id}` | **Authenticated User** | Retrieve a specific book by ID | `200 OK` / `404 Not Found` |
+| `PUT` | `/books/{book_id}` | **Authenticated User** | Update an existing book's details | `200 OK` / `404 Not Found` |
+| `DELETE` | `/books/{book_id}` | **Admin Only** | Delete a book by ID | `200 OK` / `403 Forbidden` / `404 Not Found` |
 
-**Response (`201 Created`):**
-```json
-{
-  "id": 1,
-  "title": "Clean Code",
-  "author": "Robert C. Martin",
-  "price": 29.99,
-  "genre": "Software Engineering",
-  "stock": 15
-}
-```
+### Relational Endpoints (Relational Joins)
+
+| Method | Endpoint | Access Level | Description | Status Code |
+|---|---|---|---|---|
+| `GET` | `/users/{user_id}/books` | **Authenticated User** | Relational query: books by specific user | `200 OK` |
+| `POST` | `/notes` | **Authenticated User** | Create note linked to current user | `201 Created` |
+| `GET` | `/notes` | **Authenticated User** | Relational join (`selectinload`): notes with user profile | `200 OK` |
+| `GET` | `/notes/{note_id}` | **Authenticated User** | Get note by ID with user relation | `200 OK` / `404 Not Found` |
+| `DELETE` | `/notes/{note_id}` | **Authenticated User** | Delete note by ID | `200 OK` / `404 Not Found` |
 
 ---
 
-### 2. Get All Books with Query Filtering (`GET /books`)
+## Example Usage with cURL
 
-Supports optional query parameters:
-- `title`: Case-insensitive substring match
-- `author`: Case-insensitive substring match
-- `genre`: Case-insensitive substring match
-- `min_price`: Minimum price filter (`>= min_price`)
-- `max_price`: Maximum price filter (`<= max_price`)
+### 1. Register and Authenticate
+```bash
+# Register
+curl -X POST http://127.0.0.1:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "reader1", "password": "securepassword123", "role": "user"}'
 
-**Example Request with Query Parameters:**
-`GET /books?genre=Software&min_price=20&max_price=35`
-
-**Response (`200 OK`):**
-```json
-[
-  {
-    "id": 1,
-    "title": "Clean Code",
-    "author": "Robert C. Martin",
-    "price": 29.99,
-    "genre": "Software Engineering",
-    "stock": 15
-  }
-]
+# Login
+TOKEN=$(curl -s -X POST http://127.0.0.1:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "reader1", "password": "securepassword123"}' | jq -r .access_token)
 ```
 
----
-
-### 3. Get Book by ID (`GET /books/{book_id}`)
-
-**Request:**
-`GET /books/1`
-
-**Response (`200 OK`):**
-```json
-{
-  "id": 1,
-  "title": "Clean Code",
-  "author": "Robert C. Martin",
-  "price": 29.99,
-  "genre": "Software Engineering",
-  "stock": 15
-}
+### 2. Purchase a Book with Async Background Notification
+```bash
+curl -X POST http://127.0.0.1:8000/books/1/order \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "quantity": 1,
+    "buyer_email": "reader1@example.com",
+    "webhook_url": "https://webhook.site/test-endpoint"
+  }'
 ```
 
-**Missing Book Response (`404 Not Found`):**
-`GET /books/999`
-```json
-{
-  "detail": "Book with id 999 not found"
-}
+### 3. Trigger Async Background Email & Inspect Log
+```bash
+# Trigger async email
+curl -X POST http://127.0.0.1:8000/notifications/email \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient": "customer@example.com",
+    "subject": "Monthly Digest",
+    "message": "Here are our latest technical books!"
+  }'
+
+# Inspect background task execution audit log
+curl -X GET http://127.0.0.1:8000/notifications/tasks \
+  -H "Authorization: Bearer $TOKEN"
 ```
-
----
-
-### 4. Update a Book (`PUT /books/{book_id}`)
-
-Updates one or more fields of an existing book.
-
-**Request:**
-`PUT /books/1`
-```json
-{
-  "price": 24.99,
-  "stock": 12
-}
-```
-
-**Response (`200 OK`):**
-```json
-{
-  "id": 1,
-  "title": "Clean Code",
-  "author": "Robert C. Martin",
-  "price": 24.99,
-  "genre": "Software Engineering",
-  "stock": 12
-}
-```
-
----
-
-### 5. Delete a Book (`DELETE /books/{book_id}`)
-
-**Request:**
-`DELETE /books/1`
-
-**Response (`200 OK`):**
-```json
-{
-  "message": "Book deleted successfully",
-  "id": 1
-}
-```
-
-**Missing Book Response (`404 Not Found`):**
-`DELETE /books/1`
-```json
-{
-  "detail": "Book with id 1 not found"
-}
-```
-
----
-
-### 6. Validation Error Example (`422 Unprocessable Entity`)
-
-If a request fails validation (e.g., negative price or invalid data type):
-
-**Request:**
-`POST /books`
-```json
-{
-  "title": "Invalid Book",
-  "author": "Author Name",
-  "price": -10.0,
-  "genre": "Fiction",
-  "stock": -5
-}
-```
-
-**Response (`422 Unprocessable Entity`):**
-```json
-{
-  "detail": [
-    {
-      "type": "greater_than",
-      "loc": ["body", "price"],
-      "msg": "Input should be greater than 0",
-      "input": -10.0,
-      "ctx": {"gt": 0.0}
-    },
-    {
-      "type": "greater_than_equal",
-      "loc": ["body", "stock"],
-      "msg": "Input should be greater than or equal to 0",
-      "input": -5,
-      "ctx": {"ge": 0}
-    }
-  ]
-}
-```
-
